@@ -140,7 +140,12 @@ classdef OptiVMLMB<Opti
             
             % Computes next step:
             this.xopt(1) = this.xopt(1); %Warning : side effect on x0 if x=x0 (due to the fact that x is passed-by-reference in the mexfiles)
+            if this.task == this.OPL_TASK_NEWX
             this.task = m_opl_vmlmb_iterate(this.ws,gather(this.xopt),this.cc,this.grad,this.active);
+            this.task = m_opl_vmlmb_warm_restart(this.ws);
+            else
+            this.task = m_opl_vmlmb_iterate(this.ws,gather(this.xopt),this.cc,this.grad,this.active);
+            end
             
             flag=this.OPTI_REDO_IT;
             if (this.task == this.OPL_TASK_FG)
