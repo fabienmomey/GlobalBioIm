@@ -28,20 +28,22 @@ end
 disp('Installing OptimPackLegacy');
 pth = cd;
 cd(mpath);
-websave('OptimPackLegacy.zip','https://github.com/emmt/OptimPackLegacy/archive/master.zip');
+websave('OptimPackLegacy.zip','https://github.com/fabienmomey/OptimPackLegacy/archive/modern.zip');
 unzip('OptimPackLegacy');
-matDir = 'OptimPackLegacy-master/matlab/';
-srcDir = 'OptimPackLegacy-master/src/';
+matDir = 'OptimPackLegacy-modern/matlab/';
+srcDir = 'OptimPackLegacy-modern/src/';
 MexOpt= [ '-largeArrayDims ' '-DUSE_BLAS_LIB ' '-DNEW_MATLAB_BLAS ' '-DINT_64BITS '  '-largeArrayDims ' ,options, ' CFLAGS=''-fPIC  -Wall -mtune=native  -fomit-frame-pointer -O2 ''' ];
-CFiles =  [srcDir,'opl_vmlmb.c ',srcDir,'opl_algebra.c ',srcDir,'opl_lnsrch.c ',srcDir,'opl_utils.c ','-IOptimPackLegacy-master/src/ '];
+CFiles =  [srcDir,'opl_vmlmb.c ',srcDir,'opl_algebra.c ',srcDir,'opl_lnsrch.c ',srcDir,'opl_utils.c ','-IOptimPackLegacy-modern/src/ '];
 eval(['mex ',matDir,'m_opl_vmlmb_get_reason.c ', CFiles,MexOpt]);
 eval(['mex ',matDir,'m_opl_vmlmb_create.c ', CFiles,MexOpt]);
 eval(['mex ',matDir,'m_opl_vmlmb_iterate.c ', CFiles,MexOpt]);
+eval(['mex  ',matDir,'m_opl_vmlmb_restart.c ', CFiles,MexOpt]);
 eval(['mex  ',matDir,'m_opl_vmlmb_restore.c ', CFiles,MexOpt]);
-movefile('OptimPackLegacy-master/matlab/*.m');
+eval(['mex  ',matDir,'m_opl_vmlmb_warm_restart.c ', CFiles,MexOpt]);
+movefile('OptimPackLegacy-modern/matlab/*.m');
 delete('makeOptimPack.m');
 delete('OptimPackLegacy.zip');
-rmdir('OptimPackLegacy-master','s');
+rmdir('OptimPackLegacy-modern','s');
 cd(pth);
 
 end
