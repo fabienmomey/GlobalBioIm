@@ -30,6 +30,11 @@ classdef OptiPrimalDualCondat < Opti
     % [1] Laurent Condat, "A Primal-Dual Splitting Method for Convex Optimization Involving Lipchitzian, Proximable and Linear
     % Composite Terms", Journal of Optimization Theory and Applications, vol 158, no 2, pp 460-479 (2013).
     %
+    % [2] Lorenze ... Diagonal preconditionning
+    %
+    % [3] Denneulin, Pustelnik, Loris, Primal-Dual avec Backtracking"
+    %
+    % [4] Li Zhang pour fista sur primal dual
     % **Example** A=OptiPrimalDualCondat(F0,G,Fn,Hn)
     %
     % See also :class:`Opti`, :class:`OutputOpti`, :class:`Cost`
@@ -51,11 +56,20 @@ classdef OptiPrimalDualCondat < Opti
     %     along with this program.  If not, see <http://www.gnu.org/licenses/>.
     
     % Protected Set and public Read properties
+     properties (Constant)
+        OPL_TASK_BETA     = 0; % Computation of a new beta
+        OPL_TASK_ITERATE  = 1; % New iteration for the beta obtained
+    end
+
     properties (SetAccess = protected,GetAccess = public)
         F0;    % cost F0
         G;     % cost G
         Fn;    % costs F_n (cell)
         Hn;    % associated LinOp (cell))
+        quad_approx;
+        task=1;
+        F0cost_temp;
+        F0grad_temp;
     end
     % Full protected properties
     properties (SetAccess = protected,GetAccess = protected)
@@ -66,6 +80,11 @@ classdef OptiPrimalDualCondat < Opti
         tau;       % parameter of the algorithm
         sig;       % parameter of the algorithm
         rho=1.95;  % parameter of the algorithm
+        beta;
+        eta;
+        eps;       %for diagonal preconditionner
+        flag_fista;
+        flag_backtracking;
     end
     
     methods
@@ -102,16 +121,40 @@ classdef OptiPrimalDualCondat < Opti
                 end
             end
             % Check parameters
-            assert(~isempty(this.sig),'parameter sig is not set');
-            assert(~isempty(this.tau),'parameter tau is not set');
-            assert(~isempty(this.rho),'parameter rho is not set');
+            if ~this.flag_backtracking
+                assert(~isempty(this.sig),'parameter sig is not set');
+                assert(~isempty(this.tau),'parameter tau is not set');
+                else     
+                assert(~isempty(this.beta),'parameter beta is not set');
+                assert(~isempty(this.eta),'parameter eta is not set');  
+                assert(~isempty(this.eps),'parameter eps is not set');
+                this.tau=1/(this.beta/1.99 + this.eps);
+                op_norm=0;
+                for n=1:length(this.Hn)
+                    op_norm=op_norm + (this.Hn{n}.norm*this.Hn{n}.norm);
+                end
+                this.sig =this.eps*op_norm;                
+            end
+            if ~this.flag_fista
+                assert(~isempty(this.rho),'parameter rho is not set');
+            else
+                this.rho=1;
+            end
+            
         end
         function flag=doIteration(this)
             % Reimplementation from :class:`Opti`. For details see [1].
             % Update xtilde
+            %this.F0.permute = true;
             
             if ~isempty(this.F0)
-                temp=this.xopt-this.tau*this.F0.applyGrad(this.xopt);
+                if this.task == this.OPL_TASK_ITERATE
+                    this.F0grad_temp = this.F0.applyGrad(this.xopt);
+                    if this.flag_backtracking
+                        this.F0cost_temp = this.F0.apply(this.xopt); 
+                    end
+                end                
+                temp=this.xopt-this.tau*this.F0grad_temp;
             else
                 temp=this.xopt;
             end
@@ -123,15 +166,42 @@ classdef OptiPrimalDualCondat < Opti
             else
                 xtilde=temp;
             end
-            % Update xopt
-            this.xopt=this.rho*xtilde+(1-this.rho)*this.xopt;
-            % Update ytilde and y
-            for n=1:length(this.Fn)
-                ytilde=this.Fn{n}.applyProxFench(this.y{n}+this.sig*this.Hn{n}.apply(2*xtilde-this.xold),this.sig);
-                this.y{n}=this.rho*ytilde +(1-this.rho)*this.y{n};
-            end  
+            
+            if this.flag_backtracking
+                this.quad_approx = this.F0cost_temp +... 
+                    sum( (xtilde - this.xopt).*(this.F0grad_temp), 'all') + ...
+                    (this.beta/2)*sum(abs(xtilde - this.xopt).*abs(xtilde - this.xopt), 'all');
+                ftemp = this.F0.apply(xtilde);
+                if ftemp < this.quad_approx
+                    this.task = this.OPL_TASK_ITERATE;         
 
-            flag=this.OPTI_NEXT_IT;
+                else
+                    this.task = this.OPL_TASK_BETA;
+                    this.beta = this.beta .*this.eta;
+                end
+                    this.tau=1/this.beta; %1/(this.beta/1.99 + this.eps);
+                    op_norm=0;
+                    for n=1:length(this.Hn)
+                        op_norm=op_norm + (this.Hn{n}.norm*this.Hn{n}.norm);
+                    end
+                    this.sig =0.9*(1/this.tau - this.beta/2)/op_norm;%this.eps*op_norm;  
+            end
+            if this.task == this.OPL_TASK_ITERATE                
+                % Update xopt
+                this.xopt=this.rho*xtilde+(1-this.rho)*this.xopt;
+                % Update ytilde and y
+                for n=1:length(this.Fn)
+                    ytilde=this.Fn{n}.applyProxFench(this.y{n}+this.sig*this.Hn{n}.apply(2*xtilde-this.xold),this.sig);
+                    this.y{n}=this.rho*ytilde +(1-this.rho)*this.y{n};
+                end  
+                %Update rho if FISTA
+                if this.flag_fista
+                    this.rho = (1 + sqrt(1 + 4* this.rho*this.rho))/2;
+                end
+                flag=this.OPTI_NEXT_IT;
+            else
+                flag=this.OPTI_REDO_IT;
+            end
         end
     end
 end

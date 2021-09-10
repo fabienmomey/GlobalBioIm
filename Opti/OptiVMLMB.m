@@ -56,6 +56,7 @@ classdef OptiVMLMB<Opti
         fatol=0.0;          % absolute error desired in the function (e.g. FATOL=0.0). Convergence occurs if the estimate of the absolute error between F(X) and F(XSOL), where XSOL is a local minimizer, is less or equal FATOL. FATOL must have a non-negative floating point value.
         frtol=0.;           % relative error desired in the function (e.g.  FRTOL=1e-9). Convergence occurs if the estimate of the relative error between F(X) and F(XSOL), where XSOL is a local minimizer, is less or equal FRTOL. FRTOL must have a non-negative floating point value.
         gtol=0;             % Convergence occurs if the norm of gradient is lower than GTOL
+        is_stochastic=0     % If the cost function is changing at each descent iteration, to reset the calculus of the descent step.
         % Tolerance for the line search function
         sftol=0.001;
         sgtol=0.9;
@@ -78,6 +79,7 @@ classdef OptiVMLMB<Opti
         %active;
         grad;
         cc;
+        restart=false;
     end
     methods
         function this = OptiVMLMB(C,xmin,xmax)
@@ -132,21 +134,38 @@ classdef OptiVMLMB<Opti
             this.grad = gather(real(this.cost.applyGrad(this.xopt)));
             
             this.nbeval=this.nbeval+1;
-            
+            this.neval=0;
         end
         
         function flag=doIteration(this)
             % Reimplementation from :class:`Opti`. For details see [1].
-            
+            call_iterate=true;
             % Computes next step:
             this.xopt(1) = this.xopt(1); %Warning : side effect on x0 if x=x0 (due to the fact that x is passed-by-reference in the mexfiles)
-            if this.task == this.OPL_TASK_NEWX
-            this.task = m_opl_vmlmb_iterate(this.ws,gather(this.xopt),this.cc,this.grad,this.active);
-            this.task = m_opl_vmlmb_warm_restart(this.ws);
-            else
-            this.task = m_opl_vmlmb_iterate(this.ws,gather(this.xopt),this.cc,this.grad,this.active);
+
+            if (this.task == this.OPL_TASK_NEWX)  && this.is_stochastic %
+                this.neval = this.neval+1;
+                if this.restart == true
+                this.task = m_opl_vmlmb_warm_restart(this.ws);
+                this.cost.mapsCell{1}.permute = true;
+                call_iterate=false;
+                
+%                 if (this.cost.mapsCell{1}.Lmax < numel(this.cost.mapsCell{1}.y)/2) && (this.neval >this.m/2)
+%                     this.cost.mapsCell{1}.Lmax = 2*this.cost.mapsCell{1}.Lmax;
+%                     this.neval=0;
+%                 end
+                end
+               
+                %if this.neval >  this.m
+                    this.restart = true;%~this.restart;%ToDO : let more than 2 iterates before the restart ! 
+                %    this.neval=0;
+                %end
             end
             
+            if call_iterate
+                this.task = m_opl_vmlmb_iterate(this.ws,gather(this.xopt),this.cc,this.grad,this.active);               
+            end
+
             flag=this.OPTI_REDO_IT;
             if (this.task == this.OPL_TASK_FG)
                 % apply bound constraints
@@ -160,7 +179,7 @@ classdef OptiVMLMB<Opti
                     if any(test(:)), this.xopt(test) = this.xmax(test); end
                 end
                 
-                
+               
                 this.cc = gather(this.cost.apply(this.xopt));
                 this.grad = gather(real(this.cost.applyGrad(this.xopt)));
                 
