@@ -146,11 +146,20 @@ classdef OptiVMLMB<Opti
             if (this.task == this.OPL_TASK_NEWX)  && this.is_stochastic %
                 this.neval = this.neval+1;
                 if this.restart == true
-                    this.task = m_opl_vmlmb_warm_restart(this.ws);
-                    this.cost.mapsCell{1}.permute = true;
-                    call_iterate=false;
-                end         
-                this.restart = true;%~this.restart;%ToDO : let more than 2 iterates before the restart ! 
+                this.task = m_opl_vmlmb_warm_restart(this.ws);
+                this.cost.mapsCell{1}.permute = true;
+                call_iterate=false;
+                
+%                 if (this.cost.mapsCell{1}.Lmax < numel(this.cost.mapsCell{1}.y)/2) && (this.neval >this.m/2)
+%                     this.cost.mapsCell{1}.Lmax = 2*this.cost.mapsCell{1}.Lmax;
+%                     this.neval=0;
+%                 end
+                end
+               
+                %if this.neval >  this.m
+                    this.restart = true;%~this.restart;%ToDO : let more than 2 iterates before the restart ! 
+                %    this.neval=0;
+                %end
             end
             
             if call_iterate
